@@ -9,6 +9,8 @@ import path from 'node:path';
 import { KEMONO_API_URL, KEMONO_ROOT_URL, MIME_TYPE_MAP } from './const';
 import { KemonoPost, KemonoFile, DiscordMessage } from './types';
 
+const headers = { Accept: 'text/css' };
+
 export const route: Route = {
     path: '/:source?/:id?/:type?',
     categories: ['anime'],
@@ -30,19 +32,23 @@ export const route: Route = {
     radar: [
         {
             source: ['kemono.cr/'],
-            target: '/kemono',
+            target: '',
         },
         {
             source: ['kemono.cr/:source/user/:id'],
-            target: '/kemono/:source/:id',
+            target: '/:source/:id',
         },
         {
             source: ['kemono.cr/:source/user/:id/announcements'],
-            target: '/kemono/:source/:id/announcements',
+            target: '/:source/:id/announcements',
         },
         {
             source: ['kemono.cr/:source/user/:id/fancards'],
-            target: '/kemono/:source/:id/fancards',
+            target: '/:source/:id/fancards',
+        },
+        {
+            source: ['kemono.cr/discord/server/:id'],
+            target: '/discord/:id',
         },
     ],
     name: 'Posts',
@@ -57,7 +63,7 @@ export const route: Route = {
 ::: tip
   When \`posts\` is selected as the value of the parameter **source**, the parameter **id** does not take effect.
   There is an optinal parameter **limit** which controls the number of posts to fetch, default value is 25.
-  
+
   Support for announcements and fancards:
   - Use \`/:source/:id/announcements\` to get announcements
   - Use \`/:source/:id/fancards\` to get fancards
@@ -94,7 +100,7 @@ function buildApiUrl(source: string, userId?: string, contentType?: string): str
     }
 
     const basePath = `${KEMONO_API_URL}/${source}/user/${userId}`;
-    return contentType ? `${basePath}/${contentType}` : basePath;
+    return contentType ? `${basePath}/${contentType}` : `${basePath}/posts`;
 }
 
 function buildFrontendUrl(source: string, userId?: string, contentType?: string): string {
@@ -117,7 +123,7 @@ function buildFrontendUrl(source: string, userId?: string, contentType?: string)
 async function fetchUserProfile(source: string, userId: string): Promise<string> {
     try {
         const profileUrl = `${KEMONO_API_URL}/${source}/user/${userId}/profile`;
-        const response = await got({ method: 'get', url: profileUrl });
+        const response = await got({ method: 'get', url: profileUrl, headers });
         return response.data.name || 'Unknown User';
     } catch {
         return 'Unknown User';
@@ -190,10 +196,12 @@ async function processDiscordMessages(channels: any[], limit: number) {
                 const channelResponse = await got({
                     method: 'get',
                     url: `${KEMONO_ROOT_URL}/api/v1/discord/channel/${channel.id}?o=0`,
+                    headers,
                 });
 
                 return channelResponse.data
                     .filter((message: DiscordMessage) => message.content || message.attachments)
+                    .toSorted((a, b) => b.id.localeCompare(a.id))
                     .slice(0, limit)
                     .map((message: DiscordMessage) => ({
                         title: message.content || 'Discord Message',
@@ -295,7 +303,7 @@ async function handler(ctx) {
         const apiUrl = buildApiUrl(source, userId, contentType);
         const frontendUrl = buildFrontendUrl(source, userId, contentType);
 
-        const response = await got({ method: 'get', url: apiUrl });
+        const response = await got({ method: 'get', url: apiUrl, headers });
 
         const authorName = isPostsMode || isDiscordMode || !userId ? '' : await fetchUserProfile(source, userId);
 
